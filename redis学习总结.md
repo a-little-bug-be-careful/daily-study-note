@@ -87,7 +87,7 @@ subscribe和publish命令实现消息的发布和订阅
 
 ## 六、redis之lua脚本
 
-常用命令
+1. 客户端中lua常用命令
 
 - EVAL：EVAL script numkeys key [key...] arg [arg...]
 
@@ -106,5 +106,81 @@ subscribe和publish命令实现消息的发布和订阅
   --redis.call代表通过redis调用redis命令将第一个key（luatest）的值设置为'lua'，过期时间设置为60秒
   ~~~
 
-  
+- EVALSHA和SCRIPT LOAD
+
+  > * SCRIPT LOAD命令格式：SCRIPT LOAD script
+  >
+  >   该命令并不会立即执行，而是加入到**redis服务器**脚本缓存中，计算出输入脚本的SHA1校验和，如果给定的脚本已存在，则不进行任何操作
+  >
+  > * EVALSHA命令格式：EVALSHA sha1 numkeys key [key...] arg [arg...]
+  >
+  >   通过load命令将脚本加入到redis缓存之后，可以在任何客户端通过EVALSHA命令执行该脚本，并传入指定的参数信息
+  >
+  >   ~~~sql
+  >   script load "redis.call('SETNX',KEYS[1], ARGV[1]);return redis.call('GET',KEYS[1]);" --定义一个lua脚本
+  >   evalsha 7ea0203ff452258e5d3a6e06173085f86e39265b 1 'luahahaha' 'nihaoa' --执行该脚本将得到luahahaha这个key对应的值nihaoa
+  >   ~~~
+  >
+  >   
+
+- SCRIPT EXISTS sha [sha1...]
+
+  > 判断脚本是否存在
+  >
+  > ~~~sql
+  > script exists 7ea0203ff452258e5d3a6e06173085f86e39265b --如果脚本存在输出true，否则输出false
+  > ~~~
+  >
+  > 
+
+- SCRIPT FLUSH
+
+  > 刷新redis服务器的脚本缓存，清理掉所有的脚本缓存
+  >
+  > ~~~sql
+  > script flush --清除redis服务器中所有lua脚本
+  > script exists 7ea0203ff452258e5d3a6e06173085f86e39265b --输出false
+  > ~~~
+  >
+  > 
+
+- SCRIPT KILL
+
+  > 终止lua脚本的执行，如果该脚本还未写入数据，则可以正常终止（比如一些死循环），否则不能够通过该命令终止命令执行，因为不符合lua脚本原子性的特征，lua脚本可以保证一组redis命令的原子性。
+
+2. redis直接执行lua脚本文件
+
+   利用lua脚本实现CAS
+
+   ~~~sql
+   --lua脚本
+   local key = KEYS[1];
+   local val = redis.call('GET', key);
+   if val == ARGV[1]
+   then
+   	redis.call('SET', key, ARGV[2]);
+   	return 1;
+   else
+   	return 0;
+   end
+   --直接通过redis-cli命令执行
+   redis-cli -a 'pwd' --eval 'lua脚本的目录' key [key1...] , argv [argv1...]
+   注意key和argv之间的 , 前后都要有空格
+   ~~~
+
+3. lua脚本的有点
+
+   - 减少网络开销
+
+     不需要每条redis命令都去建立连接请求，可以将一组命令作为一个脚本一起发送执行
+
+   - 原子操作
+
+     保证一组redis命令可以原子执行，完成一些复杂操作
+
+   - 复用
+
+     客户端发送的脚本可以永久存储在redis服务端lua脚本缓存中，其他客户端可以直接使用，不需要重复创建
+
+
 
